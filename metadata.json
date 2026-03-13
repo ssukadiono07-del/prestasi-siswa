@@ -1,0 +1,5 @@
+{
+  "name": "Prestasi Siswa",
+  "description": "Sistem Informasi Manajemen Prestasi Siswa dengan fitur dashboard, master data, transaksi, laporan, dan backup database.",
+  "requestFramePermissions": []
+}

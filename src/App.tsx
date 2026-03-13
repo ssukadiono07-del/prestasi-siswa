@@ -1,0 +1,1043 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Trophy, Users, FileText, Settings, LogOut, 
+  Upload, Download, Plus, Search, Menu, X, Save,
+  BarChart3, Database, Shield
+} from 'lucide-react';
+import { 
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, 
+  CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+} from 'recharts';
+import * as xlsx from 'xlsx';
+
+// Types
+interface Student {
+  id: number;
+  nis?: string;
+  name: string;
+  class: string;
+}
+
+interface Teacher {
+  id: number;
+  name: string;
+}
+
+interface Achievement {
+  id: number;
+  student_id: number;
+  student_name: string;
+  student_class: string;
+  nis: string;
+  date: string;
+  achievement_type: string;
+  competition_name: string;
+  rank: string;
+  certificate_path: string;
+  homeroom_teacher: string;
+  counseling_teacher: string;
+  follow_up: string;
+}
+
+interface DashboardStats {
+  totalStudents: number;
+  totalAchievements: number;
+  academicCount: number;
+  nonAcademicCount: number;
+  topStudents: { name: string; class: string; achievement_count: number }[];
+}
+
+export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Login State
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  // Data State
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [homeroomTeachers, setHomeroomTeachers] = useState<Teacher[]>([]);
+  const [counselingTeachers, setCounselingTeachers] = useState<Teacher[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+
+  // Fetch Data
+  const fetchData = async () => {
+    try {
+      const [statsRes, studentsRes, achievementsRes, hrRes, bkRes] = await Promise.all([
+        fetch('/api/dashboard'),
+        fetch('/api/students'),
+        fetch('/api/achievements'),
+        fetch('/api/homeroom-teachers'),
+        fetch('/api/counseling-teachers')
+      ]);
+      
+      if (statsRes.ok) setStats(await statsRes.json());
+      if (studentsRes.ok) setStudents(await studentsRes.json());
+      if (achievementsRes.ok) setAchievements(await achievementsRes.json());
+      if (hrRes.ok) setHomeroomTeachers(await hrRes.json());
+      if (bkRes.ok) setCounselingTeachers(await bkRes.json());
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [isLoggedIn, activeTab]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsLoggedIn(true);
+        setLoginError('');
+      } else {
+        setLoginError(data.message);
+      }
+    } catch (error) {
+      setLoginError("Connection error");
+    }
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setUsername('');
+    setPassword('');
+  };
+
+  if (!isLoggedIn && activeTab !== 'dashboard') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
+          <div className="bg-indigo-600 p-8 text-center">
+            <div className="flex justify-center mb-4">
+              <img src="https://iili.io/KDFk4fI.png" alt="Logo" className="h-16 object-contain bg-white p-2 rounded-lg shadow-sm" />
+            </div>
+            <h1 className="text-2xl font-bold text-white tracking-tight">PRESTASI SISWA</h1>
+            <p className="text-indigo-100 mt-2 text-sm">Sistem Informasi Manajemen Prestasi</p>
+          </div>
+          <div className="p-8">
+            <form onSubmit={handleLogin} className="space-y-6">
+              {loginError && (
+                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center border border-red-100">
+                  {loginError}
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Username</label>
+                <input 
+                  type="text" 
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                  placeholder="Masukkan username"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Password</label>
+                <input 
+                  type="password" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                  placeholder="Masukkan password"
+                  required
+                />
+              </div>
+              <div className="space-y-3">
+                <button 
+                  type="submit"
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl transition-colors shadow-sm"
+                >
+                  Masuk ke Sistem
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setActiveTab('dashboard')}
+                  className="w-full bg-white text-indigo-600 border border-indigo-200 hover:bg-indigo-50 font-medium py-3 rounded-xl transition-colors shadow-sm"
+                >
+                  Kembali ke Dashboard
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex">
+      {/* Sidebar */}
+      <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white border-r border-slate-200 transition-all duration-300 flex flex-col fixed h-full z-20`}>
+        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-200">
+          {sidebarOpen && (
+            <div className="flex items-center gap-2 overflow-hidden">
+              <img src="https://iili.io/KDFk4fI.png" alt="Logo" className="h-8 object-contain" />
+              <span className="font-bold text-slate-800 truncate">PRESTASI SISWA</span>
+            </div>
+          )}
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 mx-auto">
+            <Menu size={20} />
+          </button>
+        </div>
+        
+        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+          <NavItem icon={<BarChart3 />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} isOpen={sidebarOpen} />
+          <NavItem icon={<Database />} label="Master Data" active={activeTab === 'master'} onClick={() => setActiveTab('master')} isOpen={sidebarOpen} />
+          <NavItem icon={<Plus />} label="Transaksi" active={activeTab === 'transaksi'} onClick={() => setActiveTab('transaksi')} isOpen={sidebarOpen} />
+          <NavItem icon={<FileText />} label="Laporan" active={activeTab === 'laporan'} onClick={() => setActiveTab('laporan')} isOpen={sidebarOpen} />
+          <NavItem icon={<Settings />} label="Pengaturan" active={activeTab === 'pengaturan'} onClick={() => setActiveTab('pengaturan')} isOpen={sidebarOpen} />
+        </nav>
+
+        <div className="p-4 border-t border-slate-200">
+          {isLoggedIn ? (
+            <button 
+              onClick={handleLogout}
+              className={`flex items-center gap-3 text-red-600 hover:bg-red-50 w-full p-2 rounded-lg transition-colors ${!sidebarOpen && 'justify-center'}`}
+            >
+              <LogOut size={20} />
+              {sidebarOpen && <span className="font-medium">Keluar</span>}
+            </button>
+          ) : (
+            <button 
+              onClick={() => setActiveTab('master')}
+              className={`flex items-center gap-3 text-indigo-600 hover:bg-indigo-50 w-full p-2 rounded-lg transition-colors ${!sidebarOpen && 'justify-center'}`}
+            >
+              <LogOut size={20} className="rotate-180" />
+              {sidebarOpen && <span className="font-medium">Masuk</span>}
+            </button>
+          )}
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className={`flex-1 transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-20'}`}>
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 sticky top-0 z-10">
+          <h2 className="text-xl font-semibold text-slate-800 capitalize">
+            {activeTab.replace('-', ' ')}
+          </h2>
+          <div className="flex items-center gap-4">
+            {isLoggedIn ? (
+              <div className="flex items-center gap-3 bg-slate-100 py-1.5 px-3 rounded-full">
+                <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">
+                  A
+                </div>
+                <span className="text-sm font-medium text-slate-700 pr-2">Admin</span>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setActiveTab('master')}
+                className="text-sm font-medium text-indigo-600 bg-indigo-50 px-4 py-2 rounded-full hover:bg-indigo-100 transition-colors"
+              >
+                Login
+              </button>
+            )}
+          </div>
+        </header>
+
+        <div className="p-8">
+          {activeTab === 'dashboard' && <DashboardView stats={stats} />}
+          {activeTab === 'master' && <MasterView students={students} homeroomTeachers={homeroomTeachers} counselingTeachers={counselingTeachers} onRefresh={fetchData} />}
+          {activeTab === 'transaksi' && <TransactionView students={students} homeroomTeachers={homeroomTeachers} counselingTeachers={counselingTeachers} onRefresh={fetchData} setActiveTab={setActiveTab} />}
+          {activeTab === 'laporan' && <ReportView achievements={achievements} />}
+          {activeTab === 'pengaturan' && <SettingsView />}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// Components
+
+function NavItem({ icon, label, active, onClick, isOpen }: any) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all ${
+        active 
+          ? 'bg-indigo-50 text-indigo-700 font-medium' 
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+      } ${!isOpen && 'justify-center'}`}
+      title={label}
+    >
+      <div className={`${active ? 'text-indigo-600' : 'text-slate-400'}`}>
+        {icon}
+      </div>
+      {isOpen && <span>{label}</span>}
+    </button>
+  );
+}
+
+function DashboardView({ stats }: { stats: DashboardStats | null }) {
+  if (!stats) return <div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>;
+
+  const pieData = [
+    { name: 'Akademik', value: stats.academicCount, color: '#4f46e5' },
+    { name: 'Non Akademik', value: stats.nonAcademicCount, color: '#0ea5e9' },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Stat Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard title="Total Siswa" value={stats.totalStudents} icon={<Users size={24} />} color="bg-indigo-50 text-indigo-600" />
+        <StatCard title="Total Prestasi" value={stats.totalAchievements} icon={<Trophy size={24} />} color="bg-amber-50 text-amber-600" />
+        <StatCard title="Prestasi Akademik" value={stats.academicCount} icon={<FileText size={24} />} color="bg-emerald-50 text-emerald-600" />
+        <StatCard title="Prestasi Non Akademik" value={stats.nonAcademicCount} icon={<Trophy size={24} />} color="bg-sky-50 text-sky-600" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Chart */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2">
+          <h3 className="text-lg font-semibold text-slate-800 mb-6">Persentase Jenis Prestasi</h3>
+          <div className="h-72 flex items-center justify-center">
+            {stats.totalAchievements > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => [`${value} Prestasi`, 'Jumlah']} />
+                  <Legend verticalAlign="bottom" height={36}/>
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-slate-400 flex flex-col items-center">
+                <BarChart3 size={48} className="mb-2 opacity-20" />
+                <p>Belum ada data prestasi</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Top Students */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-800 mb-6">Siswa Berprestasi Terbanyak</h3>
+          <div className="space-y-4">
+            {stats.topStudents.length > 0 ? (
+              stats.topStudents.map((s, i) => (
+                <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                      i === 0 ? 'bg-amber-100 text-amber-600' : 
+                      i === 1 ? 'bg-slate-200 text-slate-600' : 
+                      i === 2 ? 'bg-orange-100 text-orange-600' : 
+                      'bg-indigo-50 text-indigo-600'
+                    }`}>
+                      {i + 1}
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate-800 text-sm">{s.name}</p>
+                      <p className="text-xs text-slate-500">Kelas {s.class}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 bg-indigo-100 text-indigo-700 px-2 py-1 rounded-md text-xs font-bold">
+                    <Trophy size={12} />
+                    {s.achievement_count}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-slate-500 text-center py-8">Belum ada data</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ title, value, icon, color }: any) {
+  return (
+    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+      <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${color}`}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
+        <h4 className="text-2xl font-bold text-slate-800">{value}</h4>
+      </div>
+    </div>
+  );
+}
+
+function MasterView({ students, homeroomTeachers, counselingTeachers, onRefresh }: { students: Student[], homeroomTeachers: Teacher[], counselingTeachers: Teacher[], onRefresh: () => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('siswa'); // siswa, walikelas, gurubk
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', e.target.files[0]);
+
+    let endpoint = '/api/students/upload';
+    if (type === 'walikelas') endpoint = '/api/homeroom-teachers/upload';
+    if (type === 'gurubk') endpoint = '/api/counseling-teachers/upload';
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Data berhasil diupload!');
+        onRefresh();
+      } else {
+        alert('Gagal upload: ' + data.message);
+      }
+    } catch (error) {
+      alert('Terjadi kesalahan saat upload');
+    } finally {
+      setUploading(false);
+      e.target.value = ''; // Reset input
+    }
+  };
+
+  const filteredStudents = students.filter(s => 
+    s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    s.class.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredHomeroom = homeroomTeachers.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredCounseling = counselingTeachers.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="border-b border-slate-200">
+        <div className="flex px-6 pt-4 gap-6">
+          <button 
+            className={`pb-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'siswa' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            onClick={() => setActiveTab('siswa')}
+          >
+            Data Siswa
+          </button>
+          <button 
+            className={`pb-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'walikelas' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            onClick={() => setActiveTab('walikelas')}
+          >
+            Wali Kelas
+          </button>
+          <button 
+            className={`pb-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'gurubk' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            onClick={() => setActiveTab('gurubk')}
+          >
+            Guru BK
+          </button>
+        </div>
+      </div>
+
+      <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-800">
+            {activeTab === 'siswa' ? 'Data Master Siswa' : activeTab === 'walikelas' ? 'Data Master Wali Kelas' : 'Data Master Guru BK'}
+          </h3>
+          <p className="text-sm text-slate-500 mt-1">
+            {activeTab === 'siswa' ? 'Kelola data siswa (Nama, Kelas)' : 'Kelola data guru (Nama)'}
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Cari data..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full sm:w-64"
+            />
+          </div>
+          
+          <label className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
+            {uploading ? <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> : <Upload size={18} />}
+            Upload Excel
+            <input type="file" accept=".xlsx, .xls" className="hidden" onChange={(e) => handleFileUpload(e, activeTab)} disabled={uploading} />
+          </label>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider w-20">No</th>
+              <th className="py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Nama</th>
+              {activeTab === 'siswa' && <th className="py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Kelas</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {activeTab === 'siswa' && (
+              filteredStudents.length > 0 ? (
+                filteredStudents.map((student, index) => (
+                  <tr key={student.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-3 px-6 text-sm text-slate-600">{index + 1}</td>
+                    <td className="py-3 px-6 text-sm font-medium text-slate-800">{student.name}</td>
+                    <td className="py-3 px-6 text-sm text-slate-600">
+                      <span className="bg-slate-100 text-slate-700 px-2 py-1 rounded-md text-xs font-medium">
+                        {student.class}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={3} className="py-8 text-center text-slate-500 text-sm">
+                    Tidak ada data siswa. Silakan upload dari Excel.
+                    <br />
+                    <span className="text-xs text-slate-400 mt-2 block">Format Excel: Kolom Nama, Kelas</span>
+                  </td>
+                </tr>
+              )
+            )}
+
+            {activeTab === 'walikelas' && (
+              filteredHomeroom.length > 0 ? (
+                filteredHomeroom.map((teacher, index) => (
+                  <tr key={teacher.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-3 px-6 text-sm text-slate-600">{index + 1}</td>
+                    <td className="py-3 px-6 text-sm font-medium text-slate-800">{teacher.name}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={2} className="py-8 text-center text-slate-500 text-sm">
+                    Tidak ada data Wali Kelas. Silakan upload dari Excel.
+                    <br />
+                    <span className="text-xs text-slate-400 mt-2 block">Format Excel: Kolom Nama</span>
+                  </td>
+                </tr>
+              )
+            )}
+
+            {activeTab === 'gurubk' && (
+              filteredCounseling.length > 0 ? (
+                filteredCounseling.map((teacher, index) => (
+                  <tr key={teacher.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-3 px-6 text-sm text-slate-600">{index + 1}</td>
+                    <td className="py-3 px-6 text-sm font-medium text-slate-800">{teacher.name}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={2} className="py-8 text-center text-slate-500 text-sm">
+                    Tidak ada data Guru BK. Silakan upload dari Excel.
+                    <br />
+                    <span className="text-xs text-slate-400 mt-2 block">Format Excel: Kolom Nama</span>
+                  </td>
+                </tr>
+              )
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function TransactionView({ students, homeroomTeachers, counselingTeachers, onRefresh, setActiveTab }: { students: Student[], homeroomTeachers: Teacher[], counselingTeachers: Teacher[], onRefresh: () => void, setActiveTab: (tab: string) => void }) {
+  const [selectedClass, setSelectedClass] = useState('');
+  const [formData, setFormData] = useState({
+    student_id: '',
+    date: new Date().toISOString().split('T')[0],
+    achievement_type: 'Akademik',
+    competition_name: '',
+    rank: '',
+    homeroom_teacher: '',
+    counseling_teacher: '',
+    follow_up: ''
+  });
+  const [certificate, setCertificate] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const uniqueClasses = Array.from(new Set(students.map(s => s.class))).sort();
+  const filteredStudents = selectedClass 
+    ? students.filter(s => s.class === selectedClass)
+    : students;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.student_id) {
+      alert('Pilih siswa terlebih dahulu!');
+      return;
+    }
+
+    setSubmitting(true);
+    const data = new FormData();
+    Object.entries(formData).forEach(([key, value]) => data.append(key, value));
+    if (certificate) {
+      data.append('certificate', certificate);
+    }
+
+    try {
+      const res = await fetch('/api/achievements', {
+        method: 'POST',
+        body: data,
+      });
+      const result = await res.json();
+      if (result.success) {
+        alert('Data prestasi berhasil disimpan!');
+        onRefresh();
+        setActiveTab('laporan');
+      } else {
+        alert('Gagal menyimpan: ' + result.message);
+      }
+    } catch (error) {
+      alert('Terjadi kesalahan saat menyimpan data');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="p-6 border-b border-slate-200 bg-indigo-50/50">
+        <h3 className="text-lg font-semibold text-indigo-900 flex items-center gap-2">
+          <Trophy size={20} className="text-indigo-600" />
+          Input Prestasi Baru
+        </h3>
+        <p className="text-sm text-indigo-600/70 mt-1">Catat pencapaian siswa secara detail</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Left Column */}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Tanggal Prestasi</label>
+              <input 
+                type="date" 
+                required
+                value={formData.date}
+                onChange={(e) => setFormData({...formData, date: e.target.value})}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Kelas</label>
+              <select 
+                value={selectedClass}
+                onChange={(e) => {
+                  setSelectedClass(e.target.value);
+                  setFormData({...formData, student_id: ''});
+                }}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                <option value="">-- Pilih Kelas --</option>
+                {uniqueClasses.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Siswa</label>
+              <select 
+                required
+                value={formData.student_id}
+                onChange={(e) => setFormData({...formData, student_id: e.target.value})}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                disabled={!selectedClass && uniqueClasses.length > 0}
+              >
+                <option value="">-- Pilih Siswa --</option>
+                {filteredStudents.map(s => (
+                  <option key={s.id} value={s.id}>{s.name} {selectedClass ? '' : `(${s.class})`}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Jenis Prestasi</label>
+              <select 
+                value={formData.achievement_type}
+                onChange={(e) => setFormData({...formData, achievement_type: e.target.value})}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                <option value="Akademik">Akademik</option>
+                <option value="Non Akademik">Non Akademik</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Nama Lomba / Kejuaraan</label>
+              <input 
+                type="text" 
+                required
+                placeholder="Contoh: Olimpiade Sains Nasional"
+                value={formData.competition_name}
+                onChange={(e) => setFormData({...formData, competition_name: e.target.value})}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Juara / Peringkat</label>
+              <input 
+                type="text" 
+                required
+                placeholder="Contoh: Juara 1 Tingkat Provinsi"
+                value={formData.rank}
+                onChange={(e) => setFormData({...formData, rank: e.target.value})}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+          </div>
+
+          {/* Right Column */}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Nama Wali Kelas</label>
+              <select 
+                value={formData.homeroom_teacher}
+                onChange={(e) => setFormData({...formData, homeroom_teacher: e.target.value})}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                <option value="">-- Pilih Wali Kelas --</option>
+                {homeroomTeachers.map(t => (
+                  <option key={t.id} value={t.name}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Nama Guru BK</label>
+              <select 
+                value={formData.counseling_teacher}
+                onChange={(e) => setFormData({...formData, counseling_teacher: e.target.value})}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              >
+                <option value="">-- Pilih Guru BK --</option>
+                {counselingTeachers.map(t => (
+                  <option key={t.id} value={t.name}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Tindak Lanjut / Reward</label>
+              <textarea 
+                rows={3}
+                placeholder="Contoh: Diberikan beasiswa sekolah"
+                value={formData.follow_up}
+                onChange={(e) => setFormData({...formData, follow_up: e.target.value})}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Bukti Sertifikat (Gambar/PDF)</label>
+              <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-lg hover:bg-slate-50 transition-colors">
+                <div className="space-y-1 text-center">
+                  <Upload className="mx-auto h-12 w-12 text-slate-400" />
+                  <div className="flex text-sm text-slate-600 justify-center">
+                    <label className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
+                      <span>Upload a file</span>
+                      <input 
+                        type="file" 
+                        className="sr-only" 
+                        accept="image/*,.pdf"
+                        onChange={(e) => setCertificate(e.target.files ? e.target.files[0] : null)}
+                      />
+                    </label>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    {certificate ? certificate.name : 'PNG, JPG, PDF up to 5MB'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-4 border-t border-slate-200 flex justify-end">
+          <button 
+            type="submit" 
+            disabled={submitting}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 transition-colors disabled:opacity-70"
+          >
+            {submitting ? 'Menyimpan...' : (
+              <>
+                <Save size={18} />
+                Simpan Data Prestasi
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ReportView({ achievements }: { achievements: Achievement[] }) {
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const handleDownloadExcel = () => {
+    const dataToExport = achievements.map((a, i) => ({
+      'No': i + 1,
+      'Tanggal': a.date,
+      'Nama Siswa': a.student_name,
+      'Kelas': a.student_class,
+      'Jenis Prestasi': a.achievement_type,
+      'Nama Lomba': a.competition_name,
+      'Juara/Peringkat': a.rank,
+      'Wali Kelas': a.homeroom_teacher,
+      'Guru BK': a.counseling_teacher,
+      'Tindak Lanjut': a.follow_up
+    }));
+
+    const ws = xlsx.utils.json_to_sheet(dataToExport);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, "Laporan Prestasi");
+    xlsx.writeFile(wb, `Laporan_Prestasi_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const filtered = achievements.filter(a => 
+    a.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    a.competition_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    a.achievement_type.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-800">Laporan Prestasi Siswa</h3>
+          <p className="text-sm text-slate-500 mt-1">Daftar seluruh pencapaian siswa</p>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Cari laporan..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full sm:w-64"
+            />
+          </div>
+          
+          <button 
+            onClick={handleDownloadExcel}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+          >
+            <Download size={18} />
+            Export Excel
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse min-w-[1000px]">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tanggal</th>
+              <th className="py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Siswa</th>
+              <th className="py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Jenis</th>
+              <th className="py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Lomba / Kejuaraan</th>
+              <th className="py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Peringkat</th>
+              <th className="py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Sertifikat</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {filtered.length > 0 ? (
+              filtered.map((a) => (
+                <tr key={a.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="py-3 px-4 text-sm text-slate-600 whitespace-nowrap">{a.date}</td>
+                  <td className="py-3 px-4">
+                    <p className="text-sm font-medium text-slate-800">{a.student_name}</p>
+                    <p className="text-xs text-slate-500">Kelas {a.student_class}</p>
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className={`px-2 py-1 rounded-md text-xs font-medium ${
+                      a.achievement_type === 'Akademik' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'
+                    }`}>
+                      {a.achievement_type}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-sm text-slate-700">{a.competition_name}</td>
+                  <td className="py-3 px-4 text-sm font-medium text-amber-600">{a.rank}</td>
+                  <td className="py-3 px-4 text-sm">
+                    {a.certificate_path ? (
+                      <a href={a.certificate_path} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline flex items-center gap-1">
+                        <FileText size={14} /> Lihat
+                      </a>
+                    ) : (
+                      <span className="text-slate-400">-</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} className="py-8 text-center text-slate-500 text-sm">
+                  Tidak ada data laporan.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SettingsView() {
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [message, setMessage] = useState({ text: '', type: '' });
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'admin', oldPassword, newPassword })
+      });
+      const data = await res.json();
+      setMessage({ text: data.message, type: data.success ? 'success' : 'error' });
+      if (data.success) {
+        setOldPassword('');
+        setNewPassword('');
+      }
+    } catch (error) {
+      setMessage({ text: 'Terjadi kesalahan', type: 'error' });
+    }
+  };
+
+  const handleBackup = () => {
+    window.open('/api/backup', '_blank');
+  };
+
+  const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    
+    if (!confirm('Peringatan: Restore akan menimpa seluruh data saat ini. Lanjutkan?')) {
+      e.target.value = '';
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('database', e.target.files[0]);
+
+    try {
+      const res = await fetch('/api/restore', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        window.location.reload();
+      } else {
+        alert('Gagal restore: ' + data.message);
+      }
+    } catch (error) {
+      alert('Terjadi kesalahan saat restore');
+    }
+    e.target.value = '';
+  };
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+      {/* Ubah Password */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-slate-200 flex items-center gap-3">
+          <Shield className="text-indigo-600" size={24} />
+          <h3 className="text-lg font-semibold text-slate-800">Ubah Password Admin</h3>
+        </div>
+        <form onSubmit={handleChangePassword} className="p-6 space-y-4">
+          {message.text && (
+            <div className={`p-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+              {message.text}
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Password Lama</label>
+            <input 
+              type="password" 
+              required
+              value={oldPassword}
+              onChange={(e) => setOldPassword(e.target.value)}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Password Baru</label>
+            <input 
+              type="password" 
+              required
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+          <button 
+            type="submit"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 rounded-lg transition-colors mt-4"
+          >
+            Simpan Password
+          </button>
+        </form>
+      </div>
+
+      {/* Backup & Restore */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-slate-200 flex items-center gap-3">
+          <Database className="text-indigo-600" size={24} />
+          <h3 className="text-lg font-semibold text-slate-800">Backup & Restore Database</h3>
+        </div>
+        <div className="p-6 space-y-6">
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+            <h4 className="font-medium text-slate-800 mb-2">Backup Data</h4>
+            <p className="text-sm text-slate-500 mb-4">Download seluruh data (siswa, prestasi, pengaturan) ke dalam file .sqlite untuk mengamankan data.</p>
+            <button 
+              onClick={handleBackup}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+            >
+              <Download size={18} /> Download Backup
+            </button>
+          </div>
+
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+            <h4 className="font-medium text-slate-800 mb-2">Restore Data</h4>
+            <p className="text-sm text-slate-500 mb-4">Kembalikan data dari file backup .sqlite. <strong className="text-red-500">Peringatan: Data saat ini akan ditimpa!</strong></p>
+            <label className="cursor-pointer bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 transition-colors">
+              <Upload size={18} /> Upload File Backup
+              <input type="file" accept=".sqlite" className="hidden" onChange={handleRestore} />
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
