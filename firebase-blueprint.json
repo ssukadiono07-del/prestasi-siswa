@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "A student in the school",
+      "type": "object",
+      "properties": {
+        "nis": {
+          "type": "string",
+          "description": "Nomor Induk Siswa"
+        },
+        "name": {
+          "type": "string",
+          "description": "Student's full name"
+        },
+        "class": {
+          "type": "string",
+          "description": "Student's class"
+        }
+      },
+      "required": ["name", "class"]
+    },
+    "Teacher": {
+      "title": "Teacher",
+      "description": "A teacher in the school",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Teacher's full name"
+        }
+      },
+      "required": ["name"]
+    },
+    "Achievement": {
+      "title": "Achievement",
+      "description": "A student's achievement record",
+      "type": "object",
+      "properties": {
+        "student_id": {
+          "type": "string",
+          "description": "Reference to the student document ID"
+        },
+        "student_name": {
+          "type": "string"
+        },
+        "student_class": {
+          "type": "string"
+        },
+        "nis": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "achievement_type": {
+          "type": "string",
+          "enum": ["Akademik", "Non Akademik"]
+        },
+        "competition_name": {
+          "type": "string"
+        },
+        "rank": {
+          "type": "string"
+        },
+        "certificate_path": {
+          "type": "string"
+        },
+        "homeroom_teacher": {
+          "type": "string"
+        },
+        "counseling_teacher": {
+          "type": "string"
+        },
+        "follow_up": {
+          "type": "string"
+        }
+      },
+      "required": ["student_id", "date", "achievement_type", "competition_name"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": {
+        "$ref": "#/entities/Student"
+      },
+      "description": "Collection of students"
+    },
+    "/homeroom_teachers/{teacherId}": {
+      "schema": {
+        "$ref": "#/entities/Teacher"
+      },
+      "description": "Collection of homeroom teachers"
+    },
+    "/counseling_teachers/{teacherId}": {
+      "schema": {
+        "$ref": "#/entities/Teacher"
+      },
+      "description": "Collection of counseling teachers"
+    },
+    "/achievements/{achievementId}": {
+      "schema": {
+        "$ref": "#/entities/Achievement"
+      },
+      "description": "Collection of student achievements"
+    }
+  }
+}

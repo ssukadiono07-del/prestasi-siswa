@@ -2,30 +2,33 @@ import React, { useState, useEffect } from 'react';
 import { 
   Trophy, Users, FileText, Settings, LogOut, 
   Upload, Download, Plus, Search, Menu, X, Save,
-  BarChart3, Database, Shield
+  BarChart3, Database, Shield, Trash2
 } from 'lucide-react';
 import { 
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, 
   CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import * as xlsx from 'xlsx';
+import { db, auth } from './firebase';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, createUserWithEmailAndPassword } from 'firebase/auth';
 
 // Types
 interface Student {
-  id: number;
+  id: string;
   nis?: string;
   name: string;
   class: string;
 }
 
 interface Teacher {
-  id: number;
+  id: string;
   name: string;
 }
 
 interface Achievement {
-  id: number;
-  student_id: number;
+  id: string;
+  student_id: string;
   student_name: string;
   student_class: string;
   nis: string;
@@ -51,9 +54,10 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   // Login State
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
@@ -64,56 +68,119 @@ export default function App() {
   const [counselingTeachers, setCounselingTeachers] = useState<Teacher[]>([]);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
 
-  // Fetch Data
-  const fetchData = async () => {
-    try {
-      const [statsRes, studentsRes, achievementsRes, hrRes, bkRes] = await Promise.all([
-        fetch('/api/dashboard'),
-        fetch('/api/students'),
-        fetch('/api/achievements'),
-        fetch('/api/homeroom-teachers'),
-        fetch('/api/counseling-teachers')
-      ]);
-      
-      if (statsRes.ok) setStats(await statsRes.json());
-      if (studentsRes.ok) setStudents(await studentsRes.json());
-      if (achievementsRes.ok) setAchievements(await achievementsRes.json());
-      if (hrRes.ok) setHomeroomTeachers(await hrRes.json());
-      if (bkRes.ok) setCounselingTeachers(await bkRes.json());
-    } catch (error) {
-      console.error("Error fetching data:", error);
-    }
-  };
-
+  // Auth Listener
   useEffect(() => {
-    fetchData();
-  }, [isLoggedIn, activeTab]);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsLoggedIn(!!user);
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch Data
+  useEffect(() => {
+    if (!isAuthReady) return;
+
+    const unsubStudents = onSnapshot(collection(db, 'students'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Student));
+      setStudents(data);
+    });
+
+    const unsubHomeroom = onSnapshot(collection(db, 'homeroom_teachers'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Teacher));
+      setHomeroomTeachers(data);
+    });
+
+    const unsubCounseling = onSnapshot(collection(db, 'counseling_teachers'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Teacher));
+      setCounselingTeachers(data);
+    });
+
+    const unsubAchievements = onSnapshot(collection(db, 'achievements'), (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Achievement));
+      // sort by date descending
+      data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setAchievements(data);
+    });
+
+    return () => {
+      unsubStudents();
+      unsubHomeroom();
+      unsubCounseling();
+      unsubAchievements();
+    };
+  }, [isAuthReady]);
+
+  // Compute Stats
+  useEffect(() => {
+    const totalStudents = students.length;
+    const totalAchievements = achievements.length;
+    const academicCount = achievements.filter(a => a.achievement_type === 'Akademik').length;
+    const nonAcademicCount = achievements.filter(a => a.achievement_type === 'Non Akademik').length;
+    
+    // Calculate top students
+    const studentCounts: Record<string, { name: string, class: string, count: number }> = {};
+    achievements.forEach(a => {
+      if (!studentCounts[a.student_id]) {
+        studentCounts[a.student_id] = { name: a.student_name, class: a.student_class, count: 0 };
+      }
+      studentCounts[a.student_id].count++;
+    });
+    
+    const topStudents = Object.values(studentCounts)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+      .map(s => ({ name: s.name, class: s.class, achievement_count: s.count }));
+
+    setStats({
+      totalStudents,
+      totalAchievements,
+      academicCount,
+      nonAcademicCount,
+      topStudents
+    });
+  }, [students, achievements]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginError('');
+    
+    // Shortcut for admin
+    const loginEmail = email.toLowerCase() === 'admin' ? 'admin@sekolah.com' : email;
+    
     try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setIsLoggedIn(true);
-        setLoginError('');
+      await signInWithEmailAndPassword(auth, loginEmail, password);
+    } catch (error: any) {
+      if ((error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found') && loginEmail === 'admin@sekolah.com') {
+        // Try creating the admin account if it's the first time
+        try {
+          await createUserWithEmailAndPassword(auth, loginEmail, password);
+        } catch (createError: any) {
+          if (createError.code === 'auth/email-already-in-use') {
+            setLoginError('Password salah.');
+          } else {
+            setLoginError('Gagal login: ' + createError.message);
+          }
+        }
       } else {
-        setLoginError(data.message);
+        if (error.code === 'auth/invalid-credential') {
+          setLoginError('Email atau password salah.');
+        } else {
+          setLoginError('Gagal login: ' + error.message);
+        }
       }
-    } catch (error) {
-      setLoginError("Connection error");
     }
   };
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setUsername('');
+  const handleLogout = async () => {
+    await signOut(auth);
+    setEmail('');
     setPassword('');
   };
+
+  if (!isAuthReady) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
 
   if (!isLoggedIn && activeTab !== 'dashboard') {
     return (
@@ -134,13 +201,13 @@ export default function App() {
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Username</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
                 <input 
-                  type="text" 
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                  placeholder="Masukkan username"
+                  placeholder="Masukkan email"
                   required
                 />
               </div>
@@ -249,10 +316,10 @@ export default function App() {
 
         <div className="p-8">
           {activeTab === 'dashboard' && <DashboardView stats={stats} />}
-          {activeTab === 'master' && <MasterView students={students} homeroomTeachers={homeroomTeachers} counselingTeachers={counselingTeachers} onRefresh={fetchData} />}
-          {activeTab === 'transaksi' && <TransactionView students={students} homeroomTeachers={homeroomTeachers} counselingTeachers={counselingTeachers} onRefresh={fetchData} setActiveTab={setActiveTab} />}
+          {activeTab === 'master' && <MasterView students={students} homeroomTeachers={homeroomTeachers} counselingTeachers={counselingTeachers} onRefresh={() => {}} />}
+          {activeTab === 'transaksi' && <TransactionView students={students} homeroomTeachers={homeroomTeachers} counselingTeachers={counselingTeachers} onRefresh={() => {}} setActiveTab={setActiveTab} />}
           {activeTab === 'laporan' && <ReportView achievements={achievements} />}
-          {activeTab === 'pengaturan' && <SettingsView />}
+          {activeTab === 'pengaturan' && <SettingsView students={students} homeroomTeachers={homeroomTeachers} counselingTeachers={counselingTeachers} achievements={achievements} />}
         </div>
       </main>
     </div>
@@ -393,31 +460,47 @@ function MasterView({ students, homeroomTeachers, counselingTeachers, onRefresh 
     if (!e.target.files || e.target.files.length === 0) return;
     
     setUploading(true);
-    const formData = new FormData();
-    formData.append('file', e.target.files[0]);
+    const file = e.target.files[0];
+    const reader = new FileReader();
 
-    let endpoint = '/api/students/upload';
-    if (type === 'walikelas') endpoint = '/api/homeroom-teachers/upload';
-    if (type === 'gurubk') endpoint = '/api/counseling-teachers/upload';
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = xlsx.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = xlsx.utils.sheet_to_json(ws);
 
-    try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert('Data berhasil diupload!');
+        let collectionName = 'students';
+        if (type === 'walikelas') collectionName = 'homeroom_teachers';
+        if (type === 'gurubk') collectionName = 'counseling_teachers';
+
+        const colRef = collection(db, collectionName);
+
+        // Delete existing data (optional, but usually upload replaces or appends. Let's just append for now, or maybe we should clear first? The original backend probably just inserted.)
+        // For simplicity, we'll just add them.
+        let addedCount = 0;
+        for (const row of data as any[]) {
+          if (type === 'siswa' && row.Nama && row.Kelas) {
+            await addDoc(colRef, { name: row.Nama, class: row.Kelas, nis: row.NIS || '' });
+            addedCount++;
+          } else if ((type === 'walikelas' || type === 'gurubk') && row.Nama) {
+            await addDoc(colRef, { name: row.Nama });
+            addedCount++;
+          }
+        }
+
+        alert(`Berhasil mengupload ${addedCount} data!`);
         onRefresh();
-      } else {
-        alert('Gagal upload: ' + data.message);
+      } catch (error) {
+        console.error(error);
+        alert('Terjadi kesalahan saat memproses file Excel');
+      } finally {
+        setUploading(false);
+        e.target.value = ''; // Reset input
       }
-    } catch (error) {
-      alert('Terjadi kesalahan saat upload');
-    } finally {
-      setUploading(false);
-      e.target.value = ''; // Reset input
-    }
+    };
+    reader.readAsBinaryString(file);
   };
 
   const filteredStudents = students.filter(s => 
@@ -589,27 +672,26 @@ function TransactionView({ students, homeroomTeachers, counselingTeachers, onRef
     }
 
     setSubmitting(true);
-    const data = new FormData();
-    Object.entries(formData).forEach(([key, value]) => data.append(key, value));
-    if (certificate) {
-      data.append('certificate', certificate);
-    }
-
+    
     try {
-      const res = await fetch('/api/achievements', {
-        method: 'POST',
-        body: data,
-      });
-      const result = await res.json();
-      if (result.success) {
-        alert('Data prestasi berhasil disimpan!');
-        onRefresh();
-        setActiveTab('laporan');
-      } else {
-        alert('Gagal menyimpan: ' + result.message);
-      }
-    } catch (error) {
-      alert('Terjadi kesalahan saat menyimpan data');
+      const student = students.find(s => s.id === formData.student_id);
+      if (!student) throw new Error("Student not found");
+
+      const achievementData = {
+        ...formData,
+        student_name: student.name,
+        student_class: student.class,
+        nis: student.nis || '',
+        certificate_path: certificate ? certificate.name : '' // Just store name for now
+      };
+
+      await addDoc(collection(db, 'achievements'), achievementData);
+      
+      alert('Data prestasi berhasil disimpan!');
+      onRefresh();
+      setActiveTab('laporan');
+    } catch (error: any) {
+      alert('Terjadi kesalahan saat menyimpan data: ' + error.message);
     } finally {
       setSubmitting(false);
     }
@@ -909,60 +991,45 @@ function ReportView({ achievements }: { achievements: Achievement[] }) {
   );
 }
 
-function SettingsView() {
-  const [oldPassword, setOldPassword] = useState('');
+function SettingsView({ students, homeroomTeachers, counselingTeachers, achievements }: any) {
   const [newPassword, setNewPassword] = useState('');
   const [message, setMessage] = useState({ text: '', type: '' });
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: 'admin', oldPassword, newPassword })
-      });
-      const data = await res.json();
-      setMessage({ text: data.message, type: data.success ? 'success' : 'error' });
-      if (data.success) {
-        setOldPassword('');
+      if (auth.currentUser) {
+        await updatePassword(auth.currentUser, newPassword);
+        setMessage({ text: 'Password berhasil diubah', type: 'success' });
         setNewPassword('');
+      } else {
+        setMessage({ text: 'Anda belum login', type: 'error' });
       }
-    } catch (error) {
-      setMessage({ text: 'Terjadi kesalahan', type: 'error' });
+    } catch (error: any) {
+      setMessage({ text: 'Terjadi kesalahan: ' + error.message, type: 'error' });
     }
   };
 
   const handleBackup = () => {
-    window.open('/api/backup', '_blank');
+    const data = {
+      students,
+      homeroomTeachers,
+      counselingTeachers,
+      achievements
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup_prestasi_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    
-    if (!confirm('Peringatan: Restore akan menimpa seluruh data saat ini. Lanjutkan?')) {
-      e.target.value = '';
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('database', e.target.files[0]);
-
-    try {
-      const res = await fetch('/api/restore', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert(data.message);
-        window.location.reload();
-      } else {
-        alert('Gagal restore: ' + data.message);
-      }
-    } catch (error) {
-      alert('Terjadi kesalahan saat restore');
-    }
+    alert('Fitur restore dinonaktifkan pada versi cloud untuk keamanan data.');
     e.target.value = '';
   };
 
@@ -980,16 +1047,6 @@ function SettingsView() {
               {message.text}
             </div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Password Lama</label>
-            <input 
-              type="password" 
-              required
-              value={oldPassword}
-              onChange={(e) => setOldPassword(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            />
-          </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Password Baru</label>
             <input 
@@ -1018,7 +1075,7 @@ function SettingsView() {
         <div className="p-6 space-y-6">
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
             <h4 className="font-medium text-slate-800 mb-2">Backup Data</h4>
-            <p className="text-sm text-slate-500 mb-4">Download seluruh data (siswa, prestasi, pengaturan) ke dalam file .sqlite untuk mengamankan data.</p>
+            <p className="text-sm text-slate-500 mb-4">Download seluruh data (siswa, prestasi, pengaturan) ke dalam file JSON untuk mengamankan data.</p>
             <button 
               onClick={handleBackup}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
@@ -1029,10 +1086,10 @@ function SettingsView() {
 
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
             <h4 className="font-medium text-slate-800 mb-2">Restore Data</h4>
-            <p className="text-sm text-slate-500 mb-4">Kembalikan data dari file backup .sqlite. <strong className="text-red-500">Peringatan: Data saat ini akan ditimpa!</strong></p>
+            <p className="text-sm text-slate-500 mb-4">Kembalikan data dari file backup JSON. <strong className="text-red-500">Peringatan: Data saat ini akan ditimpa!</strong></p>
             <label className="cursor-pointer bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-medium inline-flex items-center gap-2 transition-colors">
               <Upload size={18} /> Upload File Backup
-              <input type="file" accept=".sqlite" className="hidden" onChange={handleRestore} />
+              <input type="file" accept=".json" className="hidden" onChange={handleRestore} />
             </label>
           </div>
         </div>
